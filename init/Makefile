@@ -2,6 +2,14 @@
 # Makefile for the linux kernel.
 #
 
+#add for wiko unify macro
+WIKO_UNIFY_DEF := $(strip $(subst ro.wiko.type =,,$(shell cat $(PWD)/../../../../../../build.ini |grep ^ro.wiko.type)))
+ifeq ($(strip $(WIKO_UNIFY_DEF)),unify)
+$(warning -wlj--PWD= $(PWD)-------)
+ccflags-y += -DCONFIG_WIKO_UNIFY
+$(warning -wlj---ccflags-y += -DCONFIG_WIKO_UNIFY---)
+endif
+
 obj-y                          := main.o version.o mounts.o
 ifneq ($(CONFIG_BLK_DEV_INITRD),y)
 obj-y                          += noinitramfs.o
