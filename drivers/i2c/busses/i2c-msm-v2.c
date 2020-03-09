@@ -408,6 +408,8 @@ struct i2c_msm_clk_div_fld {
  */
 static struct i2c_msm_clk_div_fld i2c_msm_clk_div_map[] = {
 	{KHz(100), 124, 62},
+       {KHz(200), 64, 32},
+       {KHz(300), 43, 21},
 	{KHz(400),  28, 14},
 	{KHz(1000),  8,  5},
 };
@@ -1158,7 +1160,7 @@ static int i2c_msm_dma_xfer_buf(struct i2c_msm_ctrl *ctrl,
 	dma_desc = dmaengine_prep_slave_sg(chan->dma_chan, sg, 1, chan->dir,
 									flags);
 
-	if (dma_desc < 0) {
+	if (dma_desc == NULL) {
 		dev_err(ctrl->dev,
 		   "error dmaengine_prep_slave_sg:%ld\n", PTR_ERR(dma_desc));
 		return PTR_ERR(dma_desc);

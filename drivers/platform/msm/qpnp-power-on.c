@@ -25,6 +25,12 @@
 #include <linux/log2.h>
 #include <linux/qpnp/power-on.h>
 
+
+#ifdef CONFIG_TINNO_POWER_OFF_ALARM
+extern char *saved_command_line;
+#define ALARM_BOOT_STR   "androidboot.alarmboot=true"
+#endif
+
 #define CREATE_MASK(NUM_BITS, POS) \
 	((unsigned char) (((1 << (NUM_BITS)) - 1) << (POS)))
 #define PON_MASK(MSB_BIT, LSB_BIT) \
@@ -259,7 +265,7 @@ int qpnp_pon_set_restart_reason(enum pon_restart_reason reason)
 		return 0;
 
 	rc = qpnp_pon_masked_write(pon, QPNP_PON_SOFT_RB_SPARE(pon->base),
-					PON_MASK(7, 5), (reason << 5));
+					PON_MASK(7, 2), (reason << 2));
 	if (rc)
 		dev_err(&pon->spmi->dev,
 				"Unable to write to addr=%x, rc(%d)\n",
@@ -1484,7 +1490,9 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 	u16 poff_sts = 0;
 	const char *s3_src;
 	u8 s3_src_reg;
-
+#ifdef CONFIG_TINNO_POWER_OFF_ALARM
+	char * start;
+#endif
 	pon = devm_kzalloc(&spmi->dev, sizeof(struct qpnp_pon),
 							GFP_KERNEL);
 	if (!pon) {
@@ -1538,10 +1546,20 @@ static int qpnp_pon_probe(struct spmi_device *spmi)
 		dev_err(&pon->spmi->dev, "Unable to read PON_RESASON1 reg\n");
 		return rc;
 	}
-
 	boot_reason = ffs(pon_sts);
-
+#ifdef CONFIG_TINNO_POWER_OFF_ALARM
+	start=strstr(saved_command_line,ALARM_BOOT_STR);
+	if(start)
+	{
+		boot_reason=3;
+	}
 	index = ffs(pon_sts) - 1;
+	printk("Real boot reason is %s \n",qpnp_pon_reason[index]);
+	index =boot_reason - 1;
+#else	
+	index = ffs(pon_sts) - 1;
+#endif
+
 	cold_boot = !qpnp_pon_is_warm_reset();
 	if (index >= ARRAY_SIZE(qpnp_pon_reason) || index < 0) {
 		dev_info(&pon->spmi->dev,
