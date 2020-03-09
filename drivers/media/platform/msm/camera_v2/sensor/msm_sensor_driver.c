@@ -17,6 +17,20 @@
 #include "camera.h"
 #include "msm_cci.h"
 #include "msm_camera_dt_util.h"
+#ifdef CONFIG_TINNO_DEV_INFO
+#include <linux/proc_fs.h>
+#include <asm/uaccess.h>
+ 
+//DEF_TINNO_DEV_INFO(main_camera);
+DEF_TINNO_DEV_INFO(sub_camera);
+DEF_TINNO_DEV_INFO(main_camera);
+DEF_TINNO_DEV_INFO(camera_number);
+static int has_created_camera_dev=0;
+extern int camera_found_number;
+static char main_des_buf[100];
+static char sub_des_buf[100];
+
+#endif
 
 /* Logging macro */
 #undef CDBG
@@ -654,6 +668,21 @@ int32_t msm_sensor_driver_probe(void *setting,
 	unsigned long                        mount_pos = 0;
 	uint32_t                             is_yuv;
 
+#ifdef CONFIG_TINNO_DEV_INFO
+	if(!has_created_camera_dev)
+	{
+		CAREAT_TINNO_DEV_INFO(camera_number);
+		has_created_camera_dev=1;
+	}
+
+    if(camera_found_number==0)
+	SET_DEVINFO_STR(camera_number,"0");
+    if(camera_found_number==1)
+	SET_DEVINFO_STR(camera_number,"1");
+	if(camera_found_number==2)
+	SET_DEVINFO_STR(camera_number,"2");
+#endif
+
 	/* Validate input parameters */
 	if (!setting) {
 		pr_err("failed: slave_info %p", setting);
@@ -901,7 +930,90 @@ int32_t msm_sensor_driver_probe(void *setting,
 		goto free_camera_info;
 	}
 
-	pr_err("%s probe succeeded", slave_info->sensor_name);
+	printk("YGYG %s   %s probe succeeded raw \n", __func__,slave_info->sensor_name);
+	
+	#ifdef CONFIG_TINNO_DEV_INFO
+	printk("YC %s position %d  %s \n", __func__,s_ctrl->sensordata->sensor_info->position,slave_info->sensor_name);
+
+   //Main camera info
+	if(s_ctrl->sensordata->sensor_info->position==0){
+		
+		if(strcmp(slave_info->sensor_name, "ov5648_sunwin") == 0)
+		sprintf(main_des_buf, "%s","ov5648_sunwin(5M|interp:null)");
+		else if(strcmp(slave_info->sensor_name, "ov5648_sunwin_v3903") == 0)
+		sprintf(main_des_buf, "%s","ov5648_sunwin(5M|interp:null)");
+		else if(strcmp(slave_info->sensor_name, "ov5695_l5695f10") == 0)
+		sprintf(main_des_buf, "%s","ov5695_darling(5M|interp:null)");
+		else if(strcmp(slave_info->sensor_name, "ov5670_sunwin_v3901") == 0)
+		#ifdef TINNO_MAIN_CAMERA_INTERPOLATION
+		sprintf(main_des_buf, "%s","ov5670_sunwin(5M|interp:8M)");
+		#elif defined(TINNO_MAIN_CAMERA_INTERPOLATION_V3901_MCL_ZA)
+		sprintf(main_des_buf, "%s","ov5670_sunwin(5M|interp:8M)");
+		#else
+		sprintf(main_des_buf, "%s","ov5670_sunwin(5M|interp:null)");
+		#endif
+		else if(strcmp(slave_info->sensor_name, "ov5670_cmk_v3901") == 0)
+		#ifdef TINNO_MAIN_CAMERA_INTERPOLATION
+		sprintf(main_des_buf, "%s","ov5670_cmk(5M|interp:8M)");
+		#else
+		sprintf(main_des_buf, "%s","ov5670_cmk(5M|interp:null)");
+		#endif
+		else if(strcmp(slave_info->sensor_name, "imx219") == 0)
+		    sprintf(main_des_buf, "imx219_0x01_mipiraw_sunny");
+		else if(strcmp(slave_info->sensor_name, "imx219_0x11") == 0)
+		    sprintf(main_des_buf, "imx219_0x11_mipiraw_sunny");
+		else if(strcmp(slave_info->sensor_name, "p4901_tk_sunny_imx219") == 0)
+		    sprintf(main_des_buf, "imx219_tk_0x01_mipiraw_sunny");
+		else if(strcmp(slave_info->sensor_name, "p4901_tk_sunny_imx219_0x11") == 0)
+		    sprintf(main_des_buf, "imx219_tk_0x11_mipiraw_sunny");
+		else if(strcmp(slave_info->sensor_name, "p4903_sunny_imx219") == 0)
+		    sprintf(main_des_buf, "p4903_sunny_0x01_imx219");
+		else if(strcmp(slave_info->sensor_name, "hi842") == 0)
+		    sprintf(main_des_buf, "hi842mipiraw_sunwin");
+		else
+		sprintf(main_des_buf, "%s",slave_info->sensor_name);
+		
+	CAREAT_TINNO_DEV_INFO(main_camera);
+	SET_DEVINFO_STR(main_camera,main_des_buf);
+	camera_found_number++;
+	}
+	//Sub camera info
+	else if((s_ctrl->sensordata->sensor_info->position==1)||
+		(s_ctrl->sensordata->sensor_info->position==2))
+	{
+
+		if(strcmp(slave_info->sensor_name, "ov5670_sunwin") == 0)
+		sprintf(sub_des_buf, "%s","ov5670_sunwin(5M|interp:null)");
+		else if(strcmp(slave_info->sensor_name, "sp2508_8909") == 0)
+		sprintf(sub_des_buf, "%s","sp2508_blx(2M|interp:null)");
+		else if(strcmp(slave_info->sensor_name, "gc2355_8909") == 0)
+		sprintf(sub_des_buf, "%s","gc2355_cmk(2M|interp:null)");
+        else if(strcmp(slave_info->sensor_name, "ov5670_cmk") == 0)
+		sprintf(sub_des_buf, "ov5670mipiraw_cmk");
+        else if((strcmp(slave_info->sensor_name, "ov5670_sunwin_p4903") == 0))
+		sprintf(sub_des_buf, "ov5670mipiraw_sunwin");
+        else if((strcmp(slave_info->sensor_name, "ov5670_sunwin_p4901") == 0))
+		sprintf(sub_des_buf, "ov5670_0x06_mipiraw_sunwin");
+		else if((strcmp(slave_info->sensor_name, "ov5670_0x16_sunwin_p4901") == 0))
+		sprintf(sub_des_buf, "ov5670_0x16_mipiraw_sunwin");
+		else if(strcmp(slave_info->sensor_name, "p4901_tk_sunwin_ov5670") == 0)
+		sprintf(sub_des_buf, "ov5670_tk_0x06_mipiraw_sunwin");
+		else
+		sprintf(sub_des_buf, "%s",slave_info->sensor_name);
+
+	CAREAT_TINNO_DEV_INFO(sub_camera);
+	SET_DEVINFO_STR(sub_camera,sub_des_buf);
+	camera_found_number++;
+	}
+	
+    if(camera_found_number==0)
+	SET_DEVINFO_STR(camera_number,"0");
+    if(camera_found_number==1)
+	SET_DEVINFO_STR(camera_number,"1");
+	if(camera_found_number==2)
+	SET_DEVINFO_STR(camera_number,"2");
+
+	#endif
 
 	/*
 	  Set probe succeeded flag to 1 so that no other camera shall
