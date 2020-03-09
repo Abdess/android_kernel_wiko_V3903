@@ -63,7 +63,7 @@ static void *emergency_dload_mode_addr;
 static bool scm_dload_supported;
 
 static int dload_set(const char *val, struct kernel_param *kp);
-static int download_mode = 1;
+static int download_mode = 0;			// when panic, reboot.  not ramdump
 module_param_call(download_mode, dload_set, param_get_int,
 			&download_mode, 0644);
 static int panic_prep_restart(struct notifier_block *this,
@@ -168,6 +168,23 @@ static int dload_set(const char *val, struct kernel_param *kp)
 
 	return 0;
 }
+
+int __init tinno_enable_ramdump(char *enable)
+{
+	if (enable && strlen(enable))
+	{		
+		printk("tinno_enable_ramdump %s\n", enable);
+		if(!strcmp(enable,"1"))		
+			download_mode = 1;
+			return 0;
+	}
+	else
+	{
+		return -1;
+	}
+}
+early_param("ramdump", tinno_enable_ramdump);
+
 #else
 #define set_dload_mode(x) do {} while (0)
 
@@ -227,9 +244,6 @@ static void msm_restart_prepare(const char *cmd)
 			(in_panic || restart_mode == RESTART_DLOAD));
 #endif
 
-	need_warm_reset = (get_dload_mode() ||
-				(cmd != NULL && cmd[0] != '\0'));
-
 	if (qpnp_pon_check_hard_reset_stored()) {
 		/* Set warm reset as true when device is in dload mode
 		 *  or device doesn't boot up into recovery, bootloader or rtc.
@@ -240,6 +254,9 @@ static void msm_restart_prepare(const char *cmd)
 			strcmp(cmd, "bootloader") &&
 			strcmp(cmd, "rtc")))
 			need_warm_reset = true;
+	} else {
+		need_warm_reset = (get_dload_mode() ||
+				(cmd != NULL && cmd[0] != '\0'));
 	}
 
 	/* Hard reset the PMIC unless memory contents must be maintained. */
@@ -248,13 +265,20 @@ static void msm_restart_prepare(const char *cmd)
 	} else {
 		qpnp_pon_system_pwr_off(PON_POWER_OFF_HARD_RESET);
 	}
+	
 
 	if (cmd != NULL) {
 		if (!strncmp(cmd, "bootloader", 10)) {
 			qpnp_pon_set_restart_reason(
 				PON_RESTART_REASON_BOOTLOADER);
 			__raw_writel(0x77665500, restart_reason);
-		} else if (!strncmp(cmd, "recovery", 8)) {
+		}
+		else if (!strncmp(cmd, "ftm", 3)) {
+			qpnp_pon_set_restart_reason(
+				PON_RESTART_REASON_FTM);
+			__raw_writel(0x6f656d00, restart_reason);
+    } 
+		else if (!strncmp(cmd, "recovery", 8)) {
 			qpnp_pon_set_restart_reason(
 				PON_RESTART_REASON_RECOVERY);
 			__raw_writel(0x77665502, restart_reason);
