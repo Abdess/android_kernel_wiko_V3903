@@ -62,6 +62,7 @@ static void radio_hci_cmd_task(unsigned long arg);
 static void radio_hci_rx_task(unsigned long arg);
 static struct video_device *video_get_dev(void);
 static DEFINE_RWLOCK(hci_task_lock);
+extern struct mutex fm_smd_enable;
 
 typedef int (*radio_hci_request_func)(struct radio_hci_dev *hdev,
 		int (*req)(struct
@@ -617,22 +618,24 @@ int radio_hci_register_dev(struct radio_hci_dev *hdev)
 }
 EXPORT_SYMBOL(radio_hci_register_dev);
 
-int radio_hci_unregister_dev(struct radio_hci_dev *hdev)
+int radio_hci_unregister_dev(void)
 {
 	struct iris_device *radio = video_get_drvdata(video_get_dev());
-	if (!radio) {
-		FMDERR(":radio is null");
+	struct radio_hci_dev *hdev = NULL;
+
+	if (!radio && !radio->fm_hdev) {
+		FMDERR("radio/hdev is null");
 		return -EINVAL;
 	}
+	hdev = radio->fm_hdev;
 
 	tasklet_kill(&hdev->rx_task);
 	tasklet_kill(&hdev->cmd_task);
 	skb_queue_purge(&hdev->rx_q);
 	skb_queue_purge(&hdev->cmd_q);
 	skb_queue_purge(&hdev->raw_q);
-	kfree(radio->fm_hdev);
-	kfree(radio->videodev);
 
+	radio->fm_hdev = NULL;
 	return 0;
 }
 EXPORT_SYMBOL(radio_hci_unregister_dev);
@@ -3701,6 +3704,7 @@ static int iris_vidioc_s_ext_ctrls(struct file *file, void *priv,
 	struct hci_fm_set_cal_req_proc proc_cal_req;
 	struct hci_fm_set_spur_table_req spur_tbl_req;
 	char *spur_data;
+	char tmp_buf[2];
 
 	struct iris_device *radio = video_get_drvdata(video_devdata(file));
 	char *data = NULL;
@@ -3839,11 +3843,32 @@ static int iris_vidioc_s_ext_ctrls(struct file *file, void *priv,
 	case V4L2_CID_PRIVATE_IRIS_SET_SPURTABLE:
 		memset(&spur_tbl_req, 0, sizeof(spur_tbl_req));
 		data = (ctrl->controls[0]).string;
-		bytes_to_copy = (ctrl->controls[0]).size;
-		spur_tbl_req.mode = data[0];
-		spur_tbl_req.no_of_freqs_entries = data[1];
-		spur_data = kmalloc((data[1] * SPUR_DATA_LEN) + 2,
-							GFP_ATOMIC);
+		if (copy_from_user(&bytes_to_copy, &((ctrl->controls[0]).size),
+					sizeof(bytes_to_copy))) {
+			retval = -EFAULT;
+			goto END;
+		}
+		if (copy_from_user(&tmp_buf[0], &data[0],
+					sizeof(tmp_buf))) {
+			retval = -EFAULT;
+			goto END;
+		}
+		spur_tbl_req.mode = tmp_buf[0];
+		spur_tbl_req.no_of_freqs_entries = tmp_buf[1];
+
+		if (((spur_tbl_req.no_of_freqs_entries * SPUR_DATA_LEN) !=
+					bytes_to_copy - 2) ||
+		    ((spur_tbl_req.no_of_freqs_entries * SPUR_DATA_LEN) >
+					2 * FM_SPUR_TBL_SIZE)) {
+			FMDERR("Invalid data len: data[1] = %d, bytes = %zu",
+				spur_tbl_req.no_of_freqs_entries,
+				bytes_to_copy);
+			retval = -EINVAL;
+			goto END;
+		}
+		spur_data =
+		    kmalloc((spur_tbl_req.no_of_freqs_entries * SPUR_DATA_LEN)
+							+ 2, GFP_ATOMIC);
 		if (!spur_data) {
 			FMDERR("Allocation failed for Spur data");
 			retval = -EFAULT;
@@ -3858,7 +3883,8 @@ static int iris_vidioc_s_ext_ctrls(struct file *file, void *priv,
 
 		if (spur_tbl_req.no_of_freqs_entries <= ENTRIES_EACH_CMD) {
 			memcpy(&spur_tbl_req.spur_data[0], spur_data,
-					(data[1] * SPUR_DATA_LEN));
+				(spur_tbl_req.no_of_freqs_entries *
+							SPUR_DATA_LEN));
 			retval = radio_hci_request(radio->fm_hdev,
 					hci_fm_set_spur_tbl_req,
 					(unsigned long)&spur_tbl_req,
@@ -5195,8 +5221,11 @@ static int iris_fops_release(struct file *file)
 		return retval;
 	}
 END:
+	mutex_lock(&fm_smd_enable);
 	if (radio->fm_hdev != NULL)
 		radio->fm_hdev->close_smd();
+	mutex_unlock(&fm_smd_enable);
+
 	if (retval < 0)
 		FMDERR("Err on disable FM %d\n", retval);
 
