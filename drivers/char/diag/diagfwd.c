@@ -27,6 +27,13 @@
 #ifdef CONFIG_DIAG_OVER_USB
 #include <linux/usb/usbdiag.h>
 #endif
+//2016/01/12 zyh add, trigger auto factory reset when receive diag cmd("75 84 73 78 78 79 00") during power on.
+#include <linux/sysfs.h>
+#include <linux/string.h>
+#include <linux/fs.h>
+#include <linux/sysctl.h>
+#include <linux/uaccess.h>
+//zyh end
 #include <soc/qcom/socinfo.h>
 #include <soc/qcom/smd.h>
 #include <soc/qcom/restart.h>
@@ -57,7 +64,17 @@ unsigned char diag_debug_buf[1024];
 struct diag_master_table entry;
 int wrap_enabled;
 uint16_t wrap_count;
-
+//wj add for audio ctl cammod begain
+enum {
+    TEST_SPEAKER = 0,
+    TEST_RECEIVER,
+    TEST_MAINMIC,
+    TEST_SUBMIC,
+    TEST_HEADSETMIC,
+    TEST_STOPTEST,
+    TEST_MAX,
+};
+//wj add for audio ctl cammod end
 #define DIAG_NUM_COMMON_CMD	1
 static uint8_t common_cmds[DIAG_NUM_COMMON_CMD] = {
 	DIAG_CMD_LOG_ON_DMND
@@ -1067,6 +1084,77 @@ int diag_check_common_cmd(struct diag_pkt_header_t *header)
 
 	return 0;
 }
+//2016/01/12 zyh add, trigger auto factory reset when receive diag cmd("75 84 73 78 78 79 00") during power on.
+#define FACTORY_RESET_FLAG_PATH  "/cache/recovery/command"
+#define FACTORY_RESET_FILE_PATH  "/persist/factory_reset_file"
+#define FACTORY_RESET_FILE_CONTENT "tinno finished auto factory reset"
+#define FACTORY_RESET_FLAG_CONTENT "--wipe_data\n--reason=MasterClearConfirm\n--locale=en_US\n"
+void tinno_write_factory_reset_mark_file(void)
+{
+    mm_segment_t fs;   
+    char str_reset_data[128] = {0x00};
+    struct file *ps_filp = NULL;
+
+    pr_info("%s: zyh FACTORY_RESET_FILE_PATH = %s \n", __func__, FACTORY_RESET_FILE_PATH);
+
+    strcpy(str_reset_data, FACTORY_RESET_FILE_CONTENT);
+
+    fs=get_fs();   
+
+    set_fs(KERNEL_DS);	
+		
+    ps_filp = filp_open(FACTORY_RESET_FILE_PATH, O_RDWR | O_CREAT | O_TRUNC, 0644);
+
+    if (IS_ERR(ps_filp))
+    {
+	pr_info("%s    zyh failed to open  %s\n", __func__, FACTORY_RESET_FILE_PATH);
+    }
+    else
+    {
+	ps_filp->f_op->llseek(ps_filp, 0, SEEK_SET);
+	ps_filp->f_op->write(ps_filp, (char*)str_reset_data, strlen(str_reset_data), &ps_filp->f_pos);
+
+	ps_filp->f_op->fsync(ps_filp, 0, 0, SEEK_SET);
+	filp_close(ps_filp, NULL);
+    }
+
+    set_fs(fs);
+}
+
+void tinno_write_factory_reset_flag(void)
+{
+    mm_segment_t fs;   
+    char str_recovery_data[128] = {0x00};
+    struct file *ps_filp = NULL;
+
+    pr_info("%s: zyh FACTORY_RESET_FLAG_PATH = %s \n", __func__, FACTORY_RESET_FLAG_PATH);
+
+    strcpy(str_recovery_data, FACTORY_RESET_FLAG_CONTENT);
+
+    fs=get_fs();   
+
+    set_fs(KERNEL_DS);  
+        
+    ps_filp = filp_open(FACTORY_RESET_FLAG_PATH, O_RDWR | O_CREAT | O_TRUNC, 0644);
+
+    if (IS_ERR(ps_filp))
+    {
+        pr_info("%s    zyh failed to open  %s\n", __func__, FACTORY_RESET_FLAG_PATH);
+    }
+    else
+    {
+        ps_filp->f_op->llseek(ps_filp, 0, SEEK_SET);
+        ps_filp->f_op->write(ps_filp, (char*)str_recovery_data, strlen(str_recovery_data), &ps_filp->f_pos);
+
+	ps_filp->f_op->fsync(ps_filp, 0, 0, SEEK_SET);
+        filp_close(ps_filp, NULL);
+    }
+    
+    set_fs(fs);
+    msleep(2000);
+    kernel_restart("recovery");
+}
+//zyh end
 
 int diag_process_apps_pkt(unsigned char *buf, int len)
 {
@@ -1078,7 +1166,14 @@ int diag_process_apps_pkt(unsigned char *buf, int len)
 	int mask_ret;
 	int status = 0;
 	int write_len = 0;
-
+//wj add for audio ctl cammod begain
+	char *speaker[3] = { "AUDIO_ID=SPEAKER", NULL ,NULL};
+	char *receiver[3]    = { "AUDIO_ID=RECEIVER", NULL,NULL };
+	char *main_mic[3]   = { "AUDIO_ID=MAINMIC", NULL,NULL };
+	char *sub_mic[3]   = { "AUDIO_ID=SUBMIC", NULL,NULL };
+	char *headset_mic[3]   = { "AUDIO_ID=HEADSETMIC", NULL,NULL };
+	char *stoptest[2]   = { "AUDIO_ID=STOPTEST", NULL };
+//wj add for audio ctl cammod end
 	/* Check if the command is a supported mask command */
 	mask_ret = diag_process_apps_masks(buf, len);
 	if (mask_ret > 0) {
@@ -1101,6 +1196,76 @@ int diag_process_apps_pkt(unsigned char *buf, int len)
 	}
 
 	pr_debug("diag: %d %d %d", cmd_code, subsys_id, subsys_cmd_code);
+        //2016/01/12 zyh add, trigger auto factory reset when receive diag cmd("75 84 73 78 78 79 00") during power on.
+        /* Check for the diag command TINNO "75 84 73 78 78 79 00"*/	
+	if(subsys_id == 84 && subsys_cmd_code == 20041)
+	{
+	    driver->apps_rsp_buf[0] = 0x4b;
+	    driver->apps_rsp_buf[1] = 0x54;
+	    driver->apps_rsp_buf[2] = 0x49;
+	    driver->apps_rsp_buf[3] = 0x4e;
+	    driver->apps_rsp_buf[4] = 0x4e;
+            driver->apps_rsp_buf[5] = 0x4f;
+	    encode_rsp_and_send(5);
+	    pr_info("zyh debug : diag_send_data status = %d\n", status);
+	    pr_info("zyh debug diag_process_apps_pkt: subsys_id = %d\n", subsys_id);
+	    printk(KERN_INFO "zyh enter diag_process_apps_pkt, %d %d %d\n", cmd_code, subsys_id, subsys_cmd_code);
+#if 1	
+            tinno_write_factory_reset_mark_file();
+	    tinno_write_factory_reset_flag();
+#endif
+	    pr_info("zyh debug diag_process_apps_pkt: subsys_id = %d\n", subsys_id);
+	    printk(KERN_INFO "zyh enter diag_process_apps_pkt, %d %d %d\n", cmd_code, subsys_id, subsys_cmd_code);
+	    return 0;
+	}
+	//zyh end
+//wj add for audio ctl cammod("75 65 85 68 0X")
+        /* Check for the diag command AUD "75 65 85 68 0 0"*/		
+       if(subsys_id == 65 && subsys_cmd_code == 17493){
+           int test_id = (int)(*(char *)temp++);
+           int during = (int)(*(char *)temp);
+           int ret = -1;
+           char state_buf[10];
+           snprintf(state_buf, sizeof(state_buf),"DURING=%d", during);
+           printk("====wj audio test id : %d==during=%d=\n", test_id,during);
+           switch(test_id){
+               case TEST_SPEAKER:
+                   speaker[1] = state_buf;
+                   ret=kobject_uevent_env(&driver->diag_dev->kobj, KOBJ_CHANGE,speaker);
+                   break;
+               case TEST_RECEIVER:
+                   receiver[1] = state_buf;
+                   ret=kobject_uevent_env(&driver->diag_dev->kobj, KOBJ_CHANGE,receiver);
+                   break;
+               case TEST_MAINMIC:
+                   main_mic[1] = state_buf;
+                   ret=kobject_uevent_env(&driver->diag_dev->kobj, KOBJ_CHANGE,main_mic);
+                   break;
+               case TEST_SUBMIC:
+                   sub_mic[1] = state_buf;
+                   ret=kobject_uevent_env(&driver->diag_dev->kobj, KOBJ_CHANGE,sub_mic);
+                   break;
+               case TEST_HEADSETMIC:
+                   headset_mic[1] = state_buf;
+                   ret=kobject_uevent_env(&driver->diag_dev->kobj, KOBJ_CHANGE,headset_mic);
+                   break;
+               case TEST_STOPTEST:
+                   ret=kobject_uevent_env(&driver->diag_dev->kobj, KOBJ_CHANGE,stoptest);
+                   break;
+               default:
+                   pr_debug("wj audio error cammod");
+                   break;
+           }
+           driver->apps_rsp_buf[0] = 75;
+	    driver->apps_rsp_buf[1] = 65;
+	    driver->apps_rsp_buf[2] = 85;
+	    driver->apps_rsp_buf[3] = 68;
+	    driver->apps_rsp_buf[4] = test_id;
+           driver->apps_rsp_buf[5] = during;
+	    encode_rsp_and_send(5);
+           return 0;
+       }
+//wj add end
 	for (i = 0; i < diag_max_reg; i++) {
 		entry = driver->table[i];
 		if (entry.process_id != NO_PROCESS) {
