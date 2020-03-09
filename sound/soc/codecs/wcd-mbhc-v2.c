@@ -63,6 +63,21 @@ enum wcd_mbhc_cs_mb_en_flag {
 	WCD_MBHC_EN_PULLUP,
 	WCD_MBHC_EN_NONE,
 };
+//++ headset sw IF TN:peter
+#ifdef CONFIG_SWITCH
+extern struct switch_dev wcd_mbhc_headset_switch ;
+extern struct switch_dev wcd_mbhc_button_switch ;
+#endif
+//-- eadset sw IF
+//++ camera self-pole TN:peter
+bool self_pole = false;
+//-- camera self-pole
+
+//++ extern pa TN:peter
+#if defined  CONFIG_TINNO_L5251 || defined CONFIG_TINNO_V3901 ||defined  CONFIG_TINNO_P4901 || defined  CONFIG_TINNO_P4901TK ||defined  CONFIG_TINNO_P4903 ||defined  CONFIG_TINNO_P4903JP
+#define  CONFIG_TINNO_SND_EXTERN_PA
+#endif
+//-- extern pa
 
 static void wcd_mbhc_jack_report(struct wcd_mbhc *mbhc,
 				struct snd_soc_jack *jack, int status, int mask)
@@ -482,6 +497,11 @@ static bool wcd_mbhc_is_hph_pa_on(struct wcd_mbhc *mbhc)
 	return (hph_pa_on) ? true : false;
 }
 
+//++ extern pa TN:peter
+#ifdef  CONFIG_TINNO_SND_EXTERN_PA
+extern bool current_ext_spk_pa_state;
+#endif
+//-- extern pa
 static void wcd_mbhc_set_and_turnoff_hph_padac(struct wcd_mbhc *mbhc)
 {
 	u8 wg_time;
@@ -498,6 +518,17 @@ static void wcd_mbhc_set_and_turnoff_hph_padac(struct wcd_mbhc *mbhc)
 	} else {
 		pr_debug("%s PA is off\n", __func__);
 	}
+	
+	
+	
+
+//++ extern pa TN:peter
+#ifdef  CONFIG_TINNO_SND_EXTERN_PA
+	printk("TINNO current_ext_spk_pa_state  %d\n",current_ext_spk_pa_state);
+	if(current_ext_spk_pa_state==0)
+#endif
+//-- extern pa
+
 	WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_HPH_PA_EN, 0);
 	usleep_range(wg_time * 1000, wg_time * 1000 + 50);
 }
@@ -661,6 +692,11 @@ static void wcd_mbhc_report_plug(struct wcd_mbhc *mbhc, int insertion,
 				    WCD_MBHC_JACK_MASK);
 		wcd_mbhc_clr_and_turnon_hph_padac(mbhc);
 	}
+//++ headset sw IF TN:peter
+#ifdef CONFIG_SWITCH
+        switch_set_state(&wcd_mbhc_headset_switch, insertion ? 1:0);
+#endif
+//-- eadset sw IF
 	pr_debug("%s: leave hph_status %x\n", __func__, mbhc->hph_status);
 }
 
@@ -689,7 +725,27 @@ static void wcd_mbhc_find_plug_and_report(struct wcd_mbhc *mbhc,
 						SND_JACK_HEADPHONE);
 			if (mbhc->current_plug == MBHC_PLUG_TYPE_HEADSET)
 				wcd_mbhc_report_plug(mbhc, 0, SND_JACK_HEADSET);
-		wcd_mbhc_report_plug(mbhc, 1, SND_JACK_UNSUPPORTED);
+	//++ camera self-pole TN:peter
+	//	wcd_mbhc_report_plug(mbhc, 1, SND_JACK_UNSUPPORTED);
+		if (mbhc->impedance_detect) {
+				mbhc->mbhc_cb->compute_impedance(mbhc,
+						&mbhc->zl, &mbhc->zr);
+				if ((mbhc->zl > 20000) && (mbhc->zr > 20000)) {
+					pr_debug("%s: special accessory \n", __func__);
+					/* Toggle switch back */
+					if (mbhc->mbhc_cfg->swap_gnd_mic &&
+						mbhc->mbhc_cfg->swap_gnd_mic(mbhc->codec)) {
+						pr_debug("%s: US_EU gpio present,flip switch again\n"
+								, __func__);
+					}
+					wcd_mbhc_report_plug(mbhc, 1, SND_JACK_HEADSET);
+					self_pole = true;
+				}
+				else {
+					wcd_mbhc_report_plug(mbhc, 1, SND_JACK_UNSUPPORTED);
+				}
+			}
+	//-- camera self-pole
 	} else if (plug_type == MBHC_PLUG_TYPE_HEADSET) {
 		/*
 		 * If Headphone was reported previously, this will
@@ -922,7 +978,11 @@ static void wcd_enable_mbhc_supply(struct wcd_mbhc *mbhc,
 							WCD_MBHC_EN_CS);
 		} else if (plug_type == MBHC_PLUG_TYPE_HEADPHONE) {
 			wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_CS);
-		} else {
+		//++ camera self-pole TN:peter
+		} else if (self_pole == true){
+			wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_CS);
+		//-- camera self-pole 
+		}else{
 			wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_NONE);
 		}
 	}
@@ -1685,7 +1745,11 @@ static irqreturn_t wcd_mbhc_btn_press_handler(int irq, void *data)
 	}
 	mask = wcd_mbhc_get_button_mask(mbhc);
 	mbhc->buttons_pressed |= mask;
-	mbhc->mbhc_cb->lock_sleep(mbhc, true);
+//++ headset sw IF TN:peter
+#ifdef CONFIG_SWITCH
+    switch_set_state(&wcd_mbhc_button_switch, mbhc->buttons_pressed ? 1:0);
+#endif
+//-- headset sw IF
 	if (schedule_delayed_work(&mbhc->mbhc_btn_dwork,
 				msecs_to_jiffies(400)) == 0) {
 		WARN(1, "Button pressed twice without release event\n");
@@ -1752,6 +1816,11 @@ static irqreturn_t wcd_mbhc_release_handler(int irq, void *data)
 			}
 		}
 		mbhc->buttons_pressed &= ~WCD_MBHC_JACK_BUTTON_MASK;
+//++ headset sw IF TN:peter
+#ifdef CONFIG_SWITCH
+        switch_set_state(&wcd_mbhc_button_switch, mbhc->buttons_pressed ? 1:0);
+#endif
+//-- eadset sw IF
 	}
 exit:
 	pr_debug("%s: leave\n", __func__);

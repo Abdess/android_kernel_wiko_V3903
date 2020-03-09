@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -10011,6 +10011,20 @@ static struct snd_soc_dai_driver tasha_i2s_dai[] = {
 		},
 		.ops = &tasha_dai_ops,
 	},
+	{
+		.name = "tasha_mad1",
+		.id = AIF4_MAD_TX,
+		.capture = {
+			.stream_name = "AIF4 MAD TX",
+			.rates = SNDRV_PCM_RATE_16000,
+			.formats = TASHA_FORMATS_S16_S24_LE,
+			.rate_min = 16000,
+			.rate_max = 16000,
+			.channels_min = 1,
+			.channels_max = 1,
+		},
+		.ops = &tasha_dai_ops,
+	},
 };
 
 static void tasha_codec_power_gate_work(struct work_struct *work)
@@ -10329,10 +10343,7 @@ int tasha_mbhc_hs_detect(struct snd_soc_codec *codec,
 {
 	struct tasha_priv *tasha = snd_soc_codec_get_drvdata(codec);
 
-	if (mbhc_cfg->insert_detect)
-		return wcd_mbhc_start(&tasha->mbhc, mbhc_cfg);
-	else
-		return 0;
+	return wcd_mbhc_start(&tasha->mbhc, mbhc_cfg);
 }
 EXPORT_SYMBOL(tasha_mbhc_hs_detect);
 
@@ -11134,6 +11145,9 @@ static int tasha_codec_vote_max_bw(struct snd_soc_codec *codec,
 {
 	u32 bw_ops;
 
+	if(wcd9xxx_get_intf_type() == WCD9XXX_INTERFACE_TYPE_I2C)
+		return 0;
+
 	if (vote)
 		bw_ops = SLIM_BW_CLK_GEAR_9;
 	else
@@ -11394,7 +11408,6 @@ static int tasha_codec_probe(struct snd_soc_codec *codec)
 	for (i = 0; i < COMPANDER_MAX; i++)
 		tasha->comp_enabled[i] = 0;
 
-	tasha->intf_type = wcd9xxx_get_intf_type();
 	tasha_update_reg_reset_values(codec);
 	pr_debug("%s: MCLK Rate = %x\n", __func__, control->mclk_rate);
 	if (control->mclk_rate == TASHA_MCLK_CLK_12P288MHZ)

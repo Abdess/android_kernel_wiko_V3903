@@ -1,4 +1,4 @@
-/* Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -136,7 +136,16 @@ static struct snd_soc_dai_driver msm8x16_wcd_i2s_dai[];
 	mutex_lock_nested(&x, SINGLE_DEPTH_NESTING);
 
 #define MSM8X16_WCD_RELEASE_LOCK(x) mutex_unlock(&x);
-
+//++ headset sw IF TN:peter
+#ifdef CONFIG_SWITCH
+struct switch_dev wcd_mbhc_headset_switch = {
+	.name = "h2w",
+};
+struct switch_dev wcd_mbhc_button_switch = {
+	.name = "linebtn",
+};
+#endif
+//-- eadset sw IF
 
 /* Codec supports 2 IIR filters */
 enum {
@@ -3864,8 +3873,6 @@ void wcd_imped_config(struct snd_soc_codec *codec,
 		switch (codec_version) {
 		case TOMBAK_1_0:
 		case TOMBAK_2_0:
-			pr_debug("%s: Default gain is set\n", __func__);
-			break;
 		case CONGA:
 			/*
 			 * For 32Ohm load and higher loads, Set 0x19E
@@ -4241,10 +4248,16 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"IIR2 INP1 MUX", "DEC2", "DEC2 MUX"},
 	{"MIC BIAS Internal1", NULL, "INT_LDO_H"},
 	{"MIC BIAS Internal2", NULL, "INT_LDO_H"},
+	#if defined (CONFIG_TINNO_P4901) || defined (CONFIG_TINNO_P4903JP)
+  {"MIC BIAS Internal3", NULL, "INT_LDO_H"},	//change by lj for mic2.
+  #endif
 	{"MIC BIAS External", NULL, "INT_LDO_H"},
 	{"MIC BIAS External2", NULL, "INT_LDO_H"},
 	{"MIC BIAS Internal1", NULL, "MICBIAS_REGULATOR"},
 	{"MIC BIAS Internal2", NULL, "MICBIAS_REGULATOR"},
+	#if defined (CONFIG_TINNO_P4901) || defined (CONFIG_TINNO_P4903JP)
+	{"MIC BIAS Internal3", NULL, "MICBIAS_REGULATOR"},//change by lj for mic2.	
+	#endif
 	{"MIC BIAS External", NULL, "MICBIAS_REGULATOR"},
 	{"MIC BIAS External2", NULL, "MICBIAS_REGULATOR"},
 };
@@ -5161,43 +5174,27 @@ static int msm8x16_wcd_device_up(struct snd_soc_codec *codec)
 {
 	struct msm8x16_wcd_priv *msm8x16_wcd_priv =
 		snd_soc_codec_get_drvdata(codec);
-	u32 reg;
 	int ret = 0;
 	dev_dbg(codec->dev, "%s: device up!\n", __func__);
 
 	mutex_lock(&codec->mutex);
 
 	clear_bit(BUS_DOWN, &msm8x16_wcd_priv->status_mask);
-
-	for (reg = 0; reg < ARRAY_SIZE(msm8x16_wcd_reset_reg_defaults);
-			reg++) {
-		if (msm8x16_wcd_reg_readable[reg]) {
-			if (get_codec_version(msm8x16_wcd_priv) != CAJON &&
-					cajon_digital_reg[reg])
-				continue;
-			msm8x16_wcd_write(codec,
-				reg, msm8x16_wcd_reset_reg_defaults[reg]);
-		}
-	}
-
-	if (codec->reg_def_copy) {
-		pr_debug("%s: Update ASOC cache", __func__);
-		kfree(codec->reg_cache);
-		codec->reg_cache = kmemdup(codec->reg_def_copy,
-						codec->reg_size, GFP_KERNEL);
-		if (!codec->reg_cache) {
-			pr_err("%s: Cache update failed!\n", __func__);
-			mutex_unlock(&codec->mutex);
-			return -ENOMEM;
-		}
-	}
-
 	snd_soc_card_change_online_state(codec->card, 1);
 	/* delay is required to make sure sound card state updated */
 	usleep_range(5000, 5100);
 
 	msm8x16_wcd_codec_init_reg(codec);
 	msm8x16_wcd_update_reg_defaults(codec);
+
+	codec->cache_sync = true;
+	snd_soc_cache_sync(codec);
+	codec->cache_sync = false;
+
+	msm8x16_wcd_write(codec, MSM8X16_WCD_A_DIGITAL_INT_EN_SET,
+				MSM8X16_WCD_A_DIGITAL_INT_EN_SET__POR);
+	msm8x16_wcd_write(codec, MSM8X16_WCD_A_DIGITAL_INT_EN_CLR,
+				MSM8X16_WCD_A_DIGITAL_INT_EN_CLR__POR);
 
 	msm8x16_wcd_set_boost_v(codec);
 
@@ -5230,10 +5227,15 @@ static int modem_state_callback(struct notifier_block *nb, unsigned long value,
 	bool timedout;
 	unsigned long timeout;
 
-	if (value == SUBSYS_BEFORE_SHUTDOWN)
+	if (value == SUBSYS_BEFORE_SHUTDOWN){		
+		//modem state change log  TN:peter
+		printk("\nADSP is about to power down. power down codec\n");
 		msm8x16_wcd_device_down(registered_codec);
+	}
 	else if (value == SUBSYS_AFTER_POWERUP) {
-
+		//modem state change log  TN:peter
+		printk("\nADSP is about to power up. bring up codec\n");
+		
 		dev_dbg(registered_codec->dev,
 			"ADSP is about to power up. bring up codec\n");
 
@@ -5458,6 +5460,20 @@ static int msm8x16_wcd_codec_probe(struct snd_soc_codec *codec)
 	wcd_mbhc_init(&msm8x16_wcd_priv->mbhc, codec, &mbhc_cb, &intr_ids,
 		      wcd_mbhc_registers, true);
 
+//++ headset sw IF TN:peter
+#ifdef CONFIG_SWITCH
+        /* Add headset switch class support */         
+	ret = switch_dev_register(&wcd_mbhc_headset_switch);
+	if (ret < 0) {
+		dev_err(codec->dev, "not able to register switch device h2w\n");
+	}
+	/* Add linebtn switch class support */         
+	ret = switch_dev_register(&wcd_mbhc_button_switch);
+	if (ret < 0) {
+		dev_err(codec->dev, "not able to register switch device linebtn\n");
+	}
+#endif
+//-- eadset sw IF
 	msm8x16_wcd_priv->mclk_enabled = false;
 	msm8x16_wcd_priv->clock_active = false;
 	msm8x16_wcd_priv->config_mode_active = false;
@@ -5494,6 +5510,12 @@ static int msm8x16_wcd_codec_remove(struct snd_soc_codec *codec)
 	msm8x16_wcd_priv->on_demand_list[ON_DEMAND_MICBIAS].supply = NULL;
 	atomic_set(&msm8x16_wcd_priv->on_demand_list[ON_DEMAND_MICBIAS].ref, 0);
 	iounmap(msm8x16_wcd->dig_base);
+//++ headset sw IF TN:peter
+#ifdef CONFIG_SWITCH
+    switch_dev_unregister(&wcd_mbhc_headset_switch);
+    switch_dev_unregister(&wcd_mbhc_button_switch);
+#endif
+//-- eadset sw IF
 	kfree(msm8x16_wcd_priv->fw_data);
 	kfree(msm8x16_wcd_priv);
 
