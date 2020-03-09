@@ -2381,3 +2381,37 @@ source "crypto/Kconfig"
 source "lib/Kconfig"
 
 source "arch/arm/kvm/Kconfig"
+
+config TINNO_L5221
+bool "for tinno product L5221 dts build"
+default n
+config TINNO_L5251
+bool "for tinno product L5251 dts build"
+default n
+config TINNO_V3901
+bool "for tinno product V3901 dts build"
+default n
+config TINNO_V3903
+bool "for tinno product V3903 dts build"
+default n
+config TINNO_T3903
+bool "for tinno product V3903 dts build"
+default n
+config TINNO_P4901
+bool "for tinno product P4901 dts build"
+default n
+config TINNO_P4901TK
+bool "for tinno product P4901TK dts build"
+default n
+config TINNO_P4903
+bool "for tinno product P4903 dts build"
+default n
+config TINNO_P4903JP
+bool "for tinno product P4903JP dts build"
+default n
+config TINNO_PRINTK_UART
+bool "for tinno product printk uart dts build"
+default n
+config TINNO_ROOT_PROTECT
+bool "for tinno root protect "
+default n

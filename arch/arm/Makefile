@@ -280,7 +280,43 @@ ifeq ($(CONFIG_USE_OF),y)
 KBUILD_DTBS := dtbs
 endif
 
+ifeq ($(CONFIG_TINNO_L5221),y) 
+DTSSUBDIR := L5221
+else 
+ifeq ($(CONFIG_TINNO_L5251),y) 
+DTSSUBDIR := L5251
+else
+ifeq ($(CONFIG_TINNO_T3903),y) 
+DTSSUBDIR := T3903
+else
+ifeq ($(CONFIG_TINNO_V3903),y) 
+DTSSUBDIR := V3903
+else
+ifeq ($(CONFIG_TINNO_V3901),y) 
+DTSSUBDIR := V3901
+else 
+ifeq ($(CONFIG_TINNO_P4903),y) 
+DTSSUBDIR := P4903
+else
+ifeq ($(CONFIG_TINNO_P4901),y) 
+DTSSUBDIR := P4901
+else
+ifeq ($(CONFIG_TINNO_P4901TK),y) 
+DTSSUBDIR := P4901TK
+else
+ifeq ($(CONFIG_TINNO_P4903JP),y) 
+DTSSUBDIR := P4903JP
+else
 DTSSUBDIR := qcom
+endif
+endif
+endif
+endif
+endif
+endif
+endif
+endif
+endif
 
 all:	$(KBUILD_IMAGE) $(KBUILD_DTBS)
 
