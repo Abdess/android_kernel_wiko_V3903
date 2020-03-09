@@ -4,6 +4,13 @@
 
 # Each configuration option enables a list of files.
 
+#add for wiko unify macro
+WIKO_UNIFY_DEF := $(strip $(subst ro.wiko.type =,,$(shell cat $(PWD)/../build.ini |grep ^ro.wiko.type)))
+ifeq ($(strip $(WIKO_UNIFY_DEF)),unify)
+ccflags-y += -DCONFIG_WIKO_UNIFY
+$(warning ---add marco CONFIG_WIKO_UNIFY---)
+endif
+
 obj-$(CONFIG_INPUT_88PM860X_ONKEY)	+= 88pm860x_onkey.o
 obj-$(CONFIG_INPUT_88PM80X_ONKEY)	+= 88pm80x_onkey.o
 obj-$(CONFIG_INPUT_AB8500_PONKEY)	+= ab8500-ponkey.o
@@ -70,6 +77,7 @@ obj-$(CONFIG_SENSORS_MMA8X5X)	  	+= mma8x5x.o
 obj-$(CONFIG_SENSORS_STK3X1X)		+= stk3x1x.o
 obj-$(CONFIG_SENSORS_CAPELLA_CM36283)	+= cm36283.o
 obj-$(CONFIG_SENSORS_MPU6050)		+= mpu6050.o
+obj-$(CONFIG_SENSORS_MPU6881)		+= mpu6881.o
 obj-$(CONFIG_SENSORS_AKM8963)		+= akm8963.o
 obj-$(CONFIG_SENSORS_AKM09911)		+= akm09911.o
 obj-$(CONFIG_SENSORS_LIS3DH)		+= lis3dh_acc.o
@@ -77,7 +85,19 @@ obj-$(CONFIG_SENSORS_AP3426)		+= ap3426.o
 obj-$(CONFIG_SENSORS_BMA2X2)	+= bstclass.o
 
 obj-$(CONFIG_SENSORS_BMA2X2)	+= bma2x2.o
-obj-$(CONFIG_SENSORS_LTR553)	+= ltr553.o
+ifeq ($(TARGET_PRODUCT),L5251)
+obj-$(CONFIG_SENSORS_LTR553)      += ltr553_l5251.o
+else ifeq ($(TARGET_PRODUCT),P4901)
+obj-$(CONFIG_SENSORS_LTR553)      += ltr553_p490x.o
+else ifeq ($(TARGET_PRODUCT),P4901TK)
+obj-$(CONFIG_SENSORS_LTR553)      += ltr553_p490x.o
+else ifeq ($(TARGET_PRODUCT),P4903)
+obj-$(CONFIG_SENSORS_LTR553)      += ltr553_p490x.o
+else ifeq ($(TARGET_PRODUCT),P4903JP)
+obj-$(CONFIG_SENSORS_LTR553)      += ltr553_p490x.o
+else
+obj-$(CONFIG_SENSORS_LTR553)      += ltr553.o
+endif
 
 ifeq ($(CONFIG_SENSORS_BMA2X2_ENABLE_INT1),y)
 	EXTRA_CFLAGS += -DBMA2X2_ENABLE_INT1
@@ -86,3 +106,8 @@ endif
 ifeq ($(CONFIG_BOSCH_BMA2X2_ENABLE_INT2),y)
 	EXTRA_CFLAGS += -DBMA2X2_ENABLE_INT2
 endif
+obj-$(CONFIG_SENSORS_BMG)    += bmg160_driver.o bmg160.o
+ifeq ($(CONFIG_SENSORS_BMG_FIFO),y)
+	EXTRA_CFLAGS += -DBMG_USE_FIFO -DBMG_USE_BASIC_I2C_FUNC
+endif
+obj-$(CONFIG_SENSORS_KIONIX_ACCEL)		+= kionix_accel.o

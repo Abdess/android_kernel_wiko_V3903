@@ -51,7 +51,11 @@
 #endif
 
 #include "bstclass.h"
-
+#ifdef CONFIG_TINNO_DEV_INFO
+#include <linux/proc_fs.h>
+#include <asm/uaccess.h>
+DEF_TINNO_DEV_INFO(GSensor)
+#endif
 #define ACC_NAME  "ACC"
 #define BMA2X2_ENABLE_INT1
 
@@ -89,6 +93,7 @@
 /* wait 10ms for self test  done */
 #define SELF_TEST_DELAY()           usleep_range(10000, 15000)
 
+#ifdef USE_BMA_INTERRUPT
 #define LOW_G_INTERRUPT             REL_Z
 #define HIGH_G_INTERRUPT            REL_HWHEEL
 #define SLOP_INTERRUPT              REL_DIAL
@@ -97,6 +102,17 @@
 #define ORIENT_INTERRUPT            ABS_PRESSURE
 #define FLAT_INTERRUPT              ABS_DISTANCE
 #define SLOW_NO_MOTION_INTERRUPT    REL_Y
+#else
+/* AndroidM didn't use the dev-interrupt,bypass above defines */
+#define LOW_G_INTERRUPT             REL_Z
+#define HIGH_G_INTERRUPT            REL_Z
+#define SLOP_INTERRUPT              REL_Z
+#define DOUBLE_TAP_INTERRUPT        REL_Z
+#define SINGLE_TAP_INTERRUPT        REL_Z
+#define ORIENT_INTERRUPT            REL_Z
+#define FLAT_INTERRUPT              REL_Z
+#define SLOW_NO_MOTION_INTERRUPT    REL_Z
+#endif
 
 #define HIGH_G_INTERRUPT_X_HAPPENED                 1
 #define HIGH_G_INTERRUPT_Y_HAPPENED                 2
@@ -7842,8 +7858,8 @@ static int bma2x2_probe(struct i2c_client *client,
 		DOUBLE_TAP_INTERRUPT);
 	input_set_capability(dev_interrupt, EV_REL,
 		SINGLE_TAP_INTERRUPT);
-	input_set_capability(dev_interrupt, EV_ABS,
-		ORIENT_INTERRUPT);
+	/*input_set_capability(dev_interrupt, EV_ABS,
+		ORIENT_INTERRUPT);*/
 	input_set_capability(dev_interrupt, EV_ABS,
 		FLAT_INTERRUPT);
 	input_set_drvdata(dev_interrupt, data);
@@ -7999,6 +8015,10 @@ static int bma2x2_probe(struct i2c_client *client,
 
 	bma2x2_pinctrl_state(data, false);
 	bma2x2_power_ctl(data, false);
+#ifdef CONFIG_TINNO_DEV_INFO
+       CAREAT_TINNO_DEV_INFO(GSensor);
+       SET_DEVINFO_STR(GSensor,"BMA223");
+#endif
 	return 0;
 
 remove_bst_acc_sysfs_exit:
@@ -8230,8 +8250,23 @@ static struct i2c_driver bma2x2_driver = {
 	.shutdown   = bma2x2_shutdown,
 };
 
+// LION.LI, DATE20160401, NOTE, BugFCCBM-768 wiko unify START
+#ifdef CONFIG_WIKO_UNIFY
+static int Acceleration_sensor;
+core_param(Acceleration_sensor, Acceleration_sensor, int, 0444);
+#endif  /* CONFIG_WIKO_UNIFY */
+// LION.LI, BugFCCBM-768 wiko unify END
+
 static int __init BMA2X2_init(void)
 {
+// LION.LI, DATE20160401, NOTE, BugFCCBM-768 wiko unify START
+#ifdef CONFIG_WIKO_UNIFY
+    if (!Acceleration_sensor)
+    {
+        return 0;
+    }
+#endif  /* CONFIG_WIKO_UNIFY */
+// LION.LI, BugFCCBM-768 wiko unify END
 	return i2c_add_driver(&bma2x2_driver);
 }
 

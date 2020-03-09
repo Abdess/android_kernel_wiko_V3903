@@ -87,6 +87,7 @@ DEF_TINNO_DEV_INFO(PSensor)
 #define SET_BIT 1
 #define CLR_BIT 0
 
+
 #define ALS 0
 #define PS 1
 #define ALSPS 2
@@ -541,7 +542,7 @@ static int8_t _ltr553_set_bit(struct i2c_client *client, uint8_t set,
 
 #if 1
 #if defined (CONFIG_TINNO_SMART_ABC)
-#if defined (CONFIG_TINNO_P4901) || defined (CONFIG_TINNO_P4903JP)
+#if defined (CONFIG_TINNO_P4901) || defined (CONFIG_TINNO_P4901TK) || defined (CONFIG_TINNO_P4903JP)
 static uint16_t g_lux_sensor_map[11] = 
 {4,10,40,145,300,565,995,1350,1930,10400,20950};//4901
 #else
@@ -1170,7 +1171,7 @@ static uint16_t read_als_adc_value_temp(struct ltr553_data *ltr553)
 
 #define LOW_TEMPERATURE
 #ifdef LOW_TEMPERATURE
-static int min_value_low_temperature=0x180;
+static int min_value_low_temperature=0x300;
 static int set_first_value_flag_low_temperature=0;
 static int reset_flag_low_temperature=0;
 
@@ -3196,8 +3197,6 @@ static void ltr553_ps_cali_set_threshold(void)
     	 LO_N_HI_LIMIT, ltr553);
 
 	pr_info("ltr553_ps_cali_set_threshold:value_high=%x,value_low=%x! \n",value_high,value_low);
-	pr_info("g_ps_base_value:value_high=%x,g_ps_default_threshold_high_offset=%x,g_ps_default_threshold_low_offset=%x \n",
-		g_ps_base_value,g_ps_default_threshold_high_offset,g_ps_default_threshold_low_offset);
 }
 
 
@@ -3373,7 +3372,7 @@ static const struct file_operations ps_fops = {
 
 static struct miscdevice ps_misc = {
 	.minor = MISC_DYNAMIC_MINOR,
-	.name = "ps",
+	.name = "ltr553_ps",
 	.fops = &ps_fops
 };
 
@@ -6756,7 +6755,7 @@ static void ltr553_read_ffbm_flag(void)
 static void low_temperature_value_all_reset(void)
 {
 
-	min_value_low_temperature=0x180;
+	min_value_low_temperature=0x300;
 	set_first_value_flag_low_temperature=0;
 	reset_flag_low_temperature=0;
 }

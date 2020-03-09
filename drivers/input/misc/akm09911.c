@@ -35,7 +35,11 @@
 #include <linux/regulator/consumer.h>
 #include <linux/of_gpio.h>
 #include <linux/sensors.h>
-
+#ifdef CONFIG_TINNO_DEV_INFO
+#include <linux/proc_fs.h>
+#include <asm/uaccess.h>
+DEF_TINNO_DEV_INFO(MSensor)
+#endif
 #define AKM_DEBUG_IF			0
 #define AKM_HAS_RESET			1
 #define AKM_INPUT_DEVICE_NAME	"compass"
@@ -66,6 +70,13 @@ struct akm_sensor_state {
 	bool power_on;
 	uint8_t mode;
 };
+
+// LION.LI, DATE20160401, NOTE, BugFCCBM-768 wiko unify START
+#ifdef CONFIG_WIKO_UNIFY
+static int Magnetic_sensor;
+core_param(Magnetic_sensor, Magnetic_sensor, int, 0444);
+#endif  /* CONFIG_WIKO_UNIFY */
+// LION.LI, BugFCCBM-768 wiko unify END
 
 struct akm_compass_data {
 	struct i2c_client	*i2c;
@@ -2284,6 +2295,10 @@ int akm_compass_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	akm_compass_power_set(s_akm, false);
 
 	dev_info(&client->dev, "successfully probed.");
+#ifdef CONFIG_TINNO_DEV_INFO
+       CAREAT_TINNO_DEV_INFO(MSensor);
+       SET_DEVINFO_STR(MSensor,"AKM09911");
+#endif
 	return 0;
 
 exit8:
@@ -2366,6 +2381,14 @@ static struct i2c_driver akm_compass_driver = {
 
 static int __init akm_compass_init(void)
 {
+        // LION.LI, DATE20160401, NOTE, BugFCCBM-768 wiko unify START
+#ifdef CONFIG_WIKO_UNIFY
+        if (!Magnetic_sensor)
+        {
+            return 0;
+        }
+#endif  /* CONFIG_WIKO_UNIFY */
+        // LION.LI, BugFCCBM-768 wiko unify END
 	pr_info("AKM compass driver: initialize.");
 	return i2c_add_driver(&akm_compass_driver);
 }
